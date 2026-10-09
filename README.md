@@ -29,7 +29,7 @@ claims $150,000.
 
 ## Endpoints
 
-- `GET /health` — model, mock, validity flags
+- `GET /health` — ok, model, mock, validityPass, version
 - `POST /check { "text": "..." }` — full pipeline, returns:
 
 ```json
@@ -43,7 +43,8 @@ claims $150,000.
       "arithmetic": "$85,000 + $45,000 + $25,000 = 155,000 vs stated total 150,000 (off by 5,000)"
     }
   ],
-  "meta": { "model": "gemini-3.8-flash", "mock": false, "warnings": [], "totalMs": 1234 }
+  "meta": { "model": "gemini-3.8-flash", "mock": false, "version": "0.4.2",
+    "extractionAttempts": 1, "crossChecks": 0, "warnings": [], "totalMs": 1234 }
 }
 ```
 
@@ -61,6 +62,15 @@ claims $150,000.
 4. **Verify** — deterministic parser (currency, commas, M/B suffixes, European decimals,
    accounting parens) + arithmetic with tolerances: ±1% relative, ±0.5 percentage
    points, exact for year arithmetic. Failed parse ⇒ discarded (`unparseable-span`).
+5. **Cross-checks** — deterministic, no LLM: regex-matched rows (verbatim spans, offsets
+   included) checked against hard financial identities. Runs even when extraction
+   returns nothing, so it catches structural errors the extractor can't:
+   - `balance-sheet-identity` — Total Assets = Total Liabilities & Equity, per
+     as-of date (`xc-bs-N`)
+   - `cash-reconciliation` — balance-sheet cash = cash-flow ending cash when the
+     periods line up (`xc-cash-1`)
+   - `retained-earnings-roll-forward` — ending balance = beginning + period net
+     income; skipped when dividends are disclosed (`xc-re-1`)
 
 Discards are counted in `summary.discarded` and appear in `findings` with
 `status: "discarded"` — they are never verdicts.
@@ -69,7 +79,7 @@ Discards are counted in `summary.discarded` and appear in `findings` with
 
 | var | default | meaning |
 |---|---|---|
-| `MODEL` | `gemini-3.8-flash` | extractor + validity model; "claude" in the name → Anthropic provider, else Gemini |
+| `MODEL` | `gemini-3.8-flash` | extractor + validity model; "claude" in the name → Anthropic provider, else Gemini. Falls back to `GEMINI_MODEL` if set |
 | `GEMINI_API_KEY` | — | Gemini provider key (needed when `MODEL` is a Gemini model) |
 | `ANTHROPIC_API_KEY` | — | Anthropic provider key (needed when `MODEL` is a Claude model) |
 | `VALIDITY_PASS` | `on` | `off` skips the validity pass (cheaper, riskier) |
@@ -92,6 +102,9 @@ npm test   # node:test — parser, verifier, grounding unit tests + mock pipelin
 - Numeric spans with only-dot separators are parsed US-style (`1.500` → `1.5`).
 - Mixed-number prose ("between A and B", "3:1 ratios") is not a relation type yet.
 - Mock mode returns the canned example for any text containing `$150,000` + `$85,000`.
+- Cross-checks match rows by standard label phrasing ("Total assets", "Cash and cash
+  equivalents", "Accumulated deficit", …) in US statement layouts. Unusual labels or
+  layouts silently skip the check — a missed check is never a false flag.
 
 ## Where this fits
 
