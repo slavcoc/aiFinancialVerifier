@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "dev:web": "npm --prefix web run dev",
+    "dev:all": "concurrently -k -n engine,web -c blue,green \"npm run dev\" \"npm run dev:web\"",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
@@ -16,6 +18,9 @@
     "express": "^4.21.2"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
   }
 }

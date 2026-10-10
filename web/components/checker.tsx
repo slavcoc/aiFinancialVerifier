@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -11,6 +11,7 @@ import {
   computeMarks,
   orderFindings,
 } from "@/lib/claims";
+import { buildPlainReport } from "@/lib/report";
 
 const EXAMPLE = `Total combined expenditure across all three core sectors reached exactly $150,000.
 
@@ -165,18 +166,65 @@ function revealClaim(index: number) {
   window.setTimeout(() => el.classList.remove("claim-pulse"), 1500);
 }
 
+// Fallback for browsers/permission states where the async Clipboard API is
+// unavailable (e.g. older Safari, iframes).
+function legacyCopy(text: string): void {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
 export function Checker({ userName, userEmail }: { userName: string; userEmail: string }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CheckResponse | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeout = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copiedTimeout.current !== null) window.clearTimeout(copiedTimeout.current);
+    },
+    []
+  );
+
+  function markCopied() {
+    setCopied(true);
+    if (copiedTimeout.current !== null) window.clearTimeout(copiedTimeout.current);
+    copiedTimeout.current = window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  function copyFindings() {
+    if (!result) return;
+    const report = buildPlainReport(result);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(report)
+        .then(markCopied)
+        .catch(() => {
+          legacyCopy(report);
+          markCopied();
+        });
+    } else {
+      legacyCopy(report);
+      markCopied();
+    }
+  }
 
   async function runCheck() {
     if (!text.trim()) return;
     setBusy(true);
     setError("");
     setResult(null);
+    setCopied(false);
     try {
       const res = await fetch("/api/check", {
         method: "POST",
@@ -272,6 +320,21 @@ export function Checker({ userName, userEmail }: { userName: string; userEmail: 
 
         {result && s && (
           <section className="mt-8">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-lg">Findings report</h2>
+              <button
+                type="button"
+                onClick={copyFindings}
+                className={`min-w-32 rounded-full border px-4 py-1.5 text-sm transition-colors ${
+                  copied
+                    ? "border-moss text-moss"
+                    : "border-line hover:border-pine"
+                }`}
+              >
+                {copied ? "Copied ✓" : "Copy findings"}
+              </button>
+            </div>
+
             {marks.length > 0 && (
               <div className="mb-6 rounded-2xl border border-line bg-white p-6 shadow-sm">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

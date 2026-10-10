@@ -12,8 +12,14 @@ cost recall but can never create a false flag.
 ```bash
 npm install
 cp .env.example .env      # add your GEMINI_API_KEY
-npm run dev               # :8787
+npm run dev:all           # engine :8787 + web app :3000 in one terminal
 ```
+
+Or run the pieces separately: `npm run dev` (engine only) and `npm run dev:web`
+(web app only).
+
+No API key? `GEMINI_MOCK=1 npm run dev:all` runs the pipeline with a canned
+extraction — everything else works identically.
 
 No API key? `GEMINI_MOCK=1 npm run dev` runs the pipeline with a canned extraction
 (the motivating example from `ai-extraction-spec.md`).
