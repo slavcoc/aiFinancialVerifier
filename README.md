@@ -40,6 +40,7 @@ claims $150,000.
     {
       "id": "r1", "type": "sum", "label": "departmental expenditure breakdown",
       "status": "failed", "severity": "red",
+      "claim": "$150,000 … $85,000 … $45,000 … $25,000",
       "arithmetic": "$85,000 + $45,000 + $25,000 = 155,000 vs stated total 150,000 (off by 5,000)"
     }
   ],

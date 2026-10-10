@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeWs, spanExists, spansExist, locateSpan, locateRelation } from "../src/grounding.js";
+import {
+  normalizeWs,
+  spanExists,
+  spansExist,
+  locateSpan,
+  locateRelation,
+  claimFromSpans,
+} from "../src/grounding.js";
 
 test("normalizeWs collapses whitespace", () => {
   assert.equal(normalizeWs("a\n  b\t c"), "a b c");
@@ -44,6 +51,31 @@ test("locateSpan handles trailing punctuation stripped", () => {
 
 test("locateSpan returns null for missing spans", () => {
   assert.equal(locateSpan("nothing here", "$1.5M"), null);
+});
+
+test("claimFromSpans joins spans in document order with ellipsis", () => {
+  const text =
+    "Total combined expenditure reached exactly $150,000.\n\n- Personnel: $85,000\n- Infrastructure: $45,000\n- Travel: $25,000";
+  const s = (sub) => locateSpan(text, sub);
+  // deliberately out of document order (parts before total, as the extractor returns them)
+  const spans = [s("$85,000"), s("$25,000"), s("$150,000"), s("$45,000")];
+  assert.equal(claimFromSpans(text, spans), "$150,000 … $85,000 … $45,000 … $25,000");
+});
+
+test("claimFromSpans returns a single span verbatim", () => {
+  const text = "Revenue reached $1.5M in 2024.";
+  assert.equal(claimFromSpans(text, [locateSpan(text, "$1.5M")]), "$1.5M");
+});
+
+test("claimFromSpans normalizes whitespace inside and between spans", () => {
+  const text = "Revenue\n\n  reached\t$1.5M  in 2024.";
+  const spans = [locateSpan(text, "$1.5M"), locateSpan(text, "2024")];
+  assert.equal(claimFromSpans(text, spans), "$1.5M … 2024");
+});
+
+test("claimFromSpans returns null for missing or unpositioned spans", () => {
+  assert.equal(claimFromSpans("anything", []), null);
+  assert.equal(claimFromSpans("anything", [{ text: "$1" }, { text: "$2" }]), null);
 });
 
 test("locateRelation returns offsets for every span", () => {

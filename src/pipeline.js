@@ -1,5 +1,5 @@
 import { extract } from "./extractor.js";
-import { locateRelation } from "./grounding.js";
+import { locateRelation, claimFromSpans } from "./grounding.js";
 import { verifyRelation } from "./verifier.js";
 import { validityPass } from "./validity.js";
 import { runCrossChecks } from "./crosschecks.js";
@@ -105,8 +105,9 @@ export async function checkText(text, config, deps = {}) {
         findings.push(result);
         continue;
       }
-      // attach offsets for inline highlighting
+      // attach offsets for inline highlighting and the reconstructed claim text
       result.spans = spans;
+      result.claim = claimFromSpans(text, spans);
       summary.checked++;
       if (result.status === "passed") summary.passed++;
       else summary.failed++;
@@ -119,6 +120,7 @@ export async function checkText(text, config, deps = {}) {
   const cross = runCrossChecks(text);
   meta.crossChecks = cross.length;
   for (const f of cross) {
+    if (f.spans?.length) f.claim = claimFromSpans(text, f.spans);
     summary.checked++;
     if (f.status === "failed") summary.failed++;
     else summary.passed++;

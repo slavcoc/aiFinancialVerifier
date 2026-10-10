@@ -32,3 +32,19 @@ body {
 ::selection {
   background: var(--color-pine-soft);
 }
+
+/* One-shot pulse when a claim row reveals its highlight in the report */
+.claim-pulse {
+  animation: claim-pulse 1.4s ease-out;
+}
+
+@keyframes claim-pulse {
+  0% {
+    outline: 3px solid var(--color-ochre);
+    outline-offset: 2px;
+  }
+  100% {
+    outline: 3px solid transparent;
+    outline-offset: 8px;
+  }
+}

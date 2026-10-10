@@ -109,3 +109,15 @@ export function locateRelation(text, rel) {
   }
   return located;
 }
+
+// Reconstructs the claim as a reviewer would read it: the verbatim span texts in
+// DOCUMENT order (extractor order is relation order — parts first, total last),
+// joined with an ellipsis where document text sits between them.
+export function claimFromSpans(text, spans) {
+  const positioned = (spans ?? [])
+    .filter((s) => s && Number.isFinite(s.start) && Number.isFinite(s.end) && s.start <= s.end)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  if (positioned.length === 0) return null;
+  const doc = String(text ?? "");
+  return positioned.map((s) => doc.slice(s.start, s.end)).join(" … ");
+}

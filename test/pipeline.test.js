@@ -24,6 +24,8 @@ test("pipeline: finds the red sum (mock mode, end to end)", async () => {
   for (const s of f.spans) {
     assert.equal(EXAMPLE.slice(s.start, s.end), s.text);
   }
+  // claim: verbatim span texts in DOCUMENT order (total first), gaps elided
+  assert.equal(f.claim, "$150,000 … $85,000 … $45,000 … $25,000");
 });
 
 test("pipeline: ungrounded spans are discarded, never flagged", async () => {
@@ -34,6 +36,8 @@ test("pipeline: ungrounded spans are discarded, never flagged", async () => {
   );
   assert.equal(res.summary.checked, 0);
   assert.equal(res.summary.discarded["span-not-found"], 1);
+  const f = res.findings.find((x) => x.status === "discarded");
+  assert.equal(f.claim, undefined);
 });
 
 test("pipeline: not-stated relations are dropped by the validity pass", async () => {
@@ -42,6 +46,35 @@ test("pipeline: not-stated relations are dropped by the validity pass", async ()
   });
   assert.equal(res.summary.discarded["not-stated"], 1);
   assert.equal(res.summary.checked, 0);
+});
+
+test("pipeline: passed findings carry the claim too", async () => {
+  const text = "Total is $150,000. Parts: $85,000, $45,000 and $20,000.";
+  const res = await checkText(text, config, {
+    extract: async () => ({
+      relations: [
+        {
+          id: "r1",
+          type: "sum",
+          label: "total vs parts",
+          parts: [
+            { text: "$85,000", kind: "money" },
+            { text: "$45,000", kind: "money" },
+            { text: "$20,000", kind: "money" },
+          ],
+          total: { text: "$150,000", kind: "money" },
+        },
+      ],
+      invalid: [],
+      attempts: 1,
+    }),
+    validity: async () => ({ stated: [{ id: "r1", stated: true }] }),
+  });
+  const f = res.findings.find((x) => x.id === "r1");
+  assert.equal(f.status, "passed");
+  assert.equal(f.severity, "green");
+  // total is first in document order; parts follow in the order they appear
+  assert.equal(f.claim, "$150,000 … $85,000 … $45,000 … $20,000");
 });
 
 test("pipeline: validity failure fails closed — no verdicts", async () => {
@@ -76,4 +109,10 @@ test("pipeline: runs deterministic cross-statement checks", async () => {
   assert.equal(res.summary.failed, 3);
   assert.equal(res.summary.checked, 3);
   assert.equal(res.meta.crossChecks, 3);
+  const identity = res.findings.find((f) => f.type === "balance-sheet-identity");
+  assert.equal(identity.claim, "$64,870 … $64,530");
+  for (const f of res.findings) {
+    if (f.status === "discarded") assert.equal(f.claim, undefined);
+    else if (f.spans?.length) assert.equal(typeof f.claim, "string");
+  }
 });
