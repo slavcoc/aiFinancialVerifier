@@ -7,6 +7,11 @@ deterministic code does everything else.** The LLM never parses values and never
 verdicts — it only supplies structure. Verdicts come from pure arithmetic, so the LLM can
 cost recall but can never create a false flag.
 
+Beyond arithmetic, the engine also checks **citations**: every URL/DOI in the text is
+fetched (HEAD → GET fallback, 5s timeout) and classified resolves / dead / paywall /
+unreachable — with an archive.org snapshot note for dead links. No LLM anywhere in that
+path either.
+
 ## Quickstart
 
 ```bash
@@ -41,19 +46,35 @@ claims $150,000.
 ```json
 {
   "ok": true,
-  "summary": { "checked": 1, "passed": 0, "failed": 1, "discarded": { ... }, "validitySkipped": false },
+  "summary": {
+    "checked": 2, "passed": 1, "failed": 1,
+    "discarded": { "total": 1, "unreachable: timeout": 1 },
+    "validitySkipped": false,
+    "citationsChecked": 3, "citationsDead": 1
+  },
   "findings": [
     {
       "id": "r1", "type": "sum", "label": "departmental expenditure breakdown",
       "status": "failed", "severity": "red",
       "claim": "$150,000 … $85,000 … $45,000 … $25,000",
       "arithmetic": "$85,000 + $45,000 + $25,000 = 155,000 vs stated total 150,000 (off by 5,000)"
+    },
+    {
+      "id": "c1", "type": "citation", "label": "citation",
+      "claim": "https://example.com/definitely-not-a-real-page",
+      "status": "failed", "severity": "red",
+      "note": "HTTP 404 · Wayback snapshot: https://web.archive.org/web/20240101000000/https://example.com/definitely-not-a-real-page (2024-01-01)"
     }
   ],
   "meta": { "model": "gemini-3.8-flash", "mock": false, "version": "0.4.2",
     "extractionAttempts": 1, "crossChecks": 0, "warnings": [], "totalMs": 1234 }
 }
 ```
+
+Citation verdicts: `passed`/green = resolves (HTTP 2xx/3xx), `passed`/ochre = paywall
+(HTTP 401/403), `failed`/red = dead (HTTP 404/410 or DNS NXDOMAIN, with an archive.org
+snapshot note when one exists), `discarded` = unreachable (timeout/refused/5xx) — never
+flagged as dead without a definitive answer.
 
 ## Pipeline (precision-first order)
 
@@ -78,6 +99,11 @@ claims $150,000.
      periods line up (`xc-cash-1`)
    - `retained-earnings-roll-forward` — ending balance = beginning + period net
      income; skipped when dividends are disclosed (`xc-re-1`)
+6. **Citations** — deterministic, no LLM: every URL/DOI regex-extracted with verbatim
+   spans, fetched (HEAD → GET fallback, 5s timeout, concurrency-capped at 5) and
+   classified resolves / dead / paywall / unreachable. Dead links get one
+   archive.org availability query; the snapshot is noted on the finding. Runs even
+   when extraction returns nothing.
 
 Discards are counted in `summary.discarded` and appear in `findings` with
 `status: "discarded"` — they are never verdicts.

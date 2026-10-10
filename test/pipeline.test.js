@@ -116,3 +116,45 @@ test("pipeline: runs deterministic cross-statement checks", async () => {
     else if (f.spans?.length) assert.equal(typeof f.claim, "string");
   }
 });
+
+test("pipeline: citation checks classify links and feed the summary", async () => {
+  const text =
+    "See https://live.example.com for the source, but https://dead.example.com/x is gone " +
+    "and https://slow.example.com never answers.";
+  const fetchStub = async (url, init) => {
+    if (url.includes("archive.org")) {
+      return Response.json({ archived_snapshots: { closest: { available: true, url: "https://web.archive.org/web/20240101000000/https://dead.example.com/x", timestamp: "20240101000000" } } });
+    }
+    if (url.includes("dead.example.com")) return new Response("", { status: 404 });
+    if (url.includes("slow.example.com")) {
+      const e = new TypeError("fetch failed");
+      e.name = "TimeoutError";
+      e.cause = { code: "UND_ERR_CONNECT_TIMEOUT" };
+      throw e;
+    }
+    if (url.includes("live.example.com")) return new Response("", { status: 200 });
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+  const res = await checkText(text, config, { fetch: fetchStub });
+
+  assert.equal(res.summary.citationsChecked, 2); // live + dead; slow is discarded
+  assert.equal(res.summary.citationsDead, 1);
+  assert.equal(res.summary.checked, 2);
+  assert.equal(res.summary.failed, 1);
+  assert.equal(res.summary.passed, 1);
+  assert.equal(res.summary.discarded.total, 1);
+  assert.equal(res.summary.discarded["unreachable: timeout"], 1);
+
+  const dead = res.findings.find((f) => f.type === "citation" && f.status === "failed");
+  assert.equal(dead.severity, "red");
+  assert.match(dead.note, /HTTP 404 · Wayback snapshot: .+ \(2024-01-01\)/);
+  assert.equal(dead.claim, "https://dead.example.com/x");
+  assert.equal(text.slice(dead.spans[0].start, dead.spans[0].end), dead.claim);
+
+  const live = res.findings.find((f) => f.type === "citation" && f.status === "passed");
+  assert.equal(live.severity, "green");
+  assert.equal(live.note, "HTTP 200");
+
+  const slow = res.findings.find((f) => f.type === "citation" && f.status === "discarded");
+  assert.equal(slow.reason, "unreachable: timeout");
+});

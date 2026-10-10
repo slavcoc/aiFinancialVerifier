@@ -7,8 +7,9 @@ export type Finding = {
   type?: string | null;
   label?: string | null;
   status: "passed" | "failed" | "discarded";
-  severity?: "red" | "green" | null;
+  severity?: "red" | "green" | "ochre" | null;
   arithmetic?: string;
+  note?: string;
   reason?: string;
   actual?: number;
   stated?: number;
@@ -27,6 +28,8 @@ export type CheckResponse = {
     failed: number;
     discarded: Record<string, number>;
     validitySkipped: boolean;
+    citationsChecked?: number;
+    citationsDead?: number;
   };
   findings?: Finding[];
   meta?: {
@@ -52,7 +55,7 @@ export function claimText(f: Finding): string | null {
 export type Mark = {
   start: number;
   end: number;
-  color: "red" | "green";
+  color: "red" | "green" | "ochre";
   tooltip: string;
   findingIndex: number;
 };
@@ -70,14 +73,22 @@ export function computeMarks(findings: Finding[]): Marks {
   const marks: Mark[] = [];
   findings.forEach((f, findingIndex) => {
     if (f.status === "discarded" || !f.spans) return;
-    const color = f.severity === "red" ? "red" : "green";
-    const verdict = f.severity === "red" ? "Doesn't add up" : "Checks out";
+    const color = f.severity === "red" ? "red" : f.severity === "ochre" ? "ochre" : "green";
+    const verdict = f.type === "citation"
+      ? color === "red"
+        ? "Dead link"
+        : color === "ochre"
+          ? "Paywall"
+          : "Link resolves"
+      : color === "red"
+        ? "Doesn't add up"
+        : "Checks out";
     for (const s of f.spans) {
       marks.push({
         start: s.start,
         end: s.end,
         color,
-        tooltip: `${verdict} · ${f.label ?? f.type}${f.arithmetic ? `\n${f.arithmetic}` : ""}`,
+        tooltip: `${verdict} · ${f.label ?? f.type}${f.arithmetic ?? f.note ? `\n${f.arithmetic ?? f.note}` : ""}`,
         findingIndex,
       });
     }

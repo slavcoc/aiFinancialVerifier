@@ -25,7 +25,10 @@ app.use((req, res, next) => {
       console.log(
         `[check] ${ms}ms` +
           (s
-            ? ` | checked=${s.checked} passed=${s.passed} failed=${s.failed} discarded=${s.discarded?.total ?? 0}`
+            ? ` | checked=${s.checked} passed=${s.passed} failed=${s.failed} discarded=${s.discarded?.total ?? 0}` +
+              (s.citationsChecked !== undefined
+                ? ` | links=${s.citationsChecked} deadLinks=${s.citationsDead ?? 0}`
+                : "")
             : "") +
           (body?.ok === false ? ` | error=${body?.error ?? ""}` : "")
       );

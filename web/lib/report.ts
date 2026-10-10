@@ -12,16 +12,22 @@ function header(result: CheckResponse): string {
   const checked = s?.checked ?? 0;
   const failed = s?.failed ?? 0;
   const skipped = s?.discarded?.total ?? 0;
-  return `Second Reader findings — ${checked} checked · ${failed} failed · ${skipped} skipped`;
+  const citations =
+    s?.citationsChecked !== undefined
+      ? ` · ${s.citationsChecked} links · ${s.citationsDead ?? 0} dead`
+      : "";
+  return `Second Reader findings — ${checked} checked · ${failed} failed · ${skipped} skipped${citations}`;
 }
 
 function row(f: Finding, n: number): string {
+  const verdict = f.type === "citation" ? "Dead link" : VERDICT;
   const title = f.label ?? f.type ?? "claim";
-  const type = f.type ? ` (${f.type})` : "";
-  const lines = [`${n}) ${VERDICT} — ${title}${type}`];
+  const type = f.type && f.type !== f.label ? ` (${f.type})` : "";
+  const lines = [`${n}) ${verdict} — ${title}${type}`];
   const claim = claimText(f);
   if (claim) lines.push(`    "${claim}"`);
-  if (f.arithmetic) lines.push(`    Math: ${f.arithmetic}`);
+  if (f.note) lines.push(`    ${f.note}`);
+  else if (f.arithmetic) lines.push(`    Math: ${f.arithmetic}`);
   return lines.join("\n");
 }
 

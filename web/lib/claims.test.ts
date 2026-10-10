@@ -72,6 +72,46 @@ describe("computeMarks", () => {
     expect(red.tooltip).toContain("$85,000 + $45,000 + $25,000 = 155,000");
   });
 
+  it("uses citation verdict words and ochre for paywalls", () => {
+    const citations: Finding[] = [
+      {
+        id: "c1",
+        type: "citation",
+        label: "citation",
+        status: "failed",
+        severity: "red",
+        note: "HTTP 404 · no archive snapshot",
+        spans: [{ text: "https://dead.example.com", start: 10, end: 36 }],
+      },
+      {
+        id: "c2",
+        type: "citation",
+        label: "citation",
+        status: "passed",
+        severity: "ochre",
+        note: "HTTP 403 (paywall)",
+        spans: [{ text: "https://pay.example.com", start: 50, end: 76 }],
+      },
+      {
+        id: "c3",
+        type: "citation",
+        label: "citation",
+        status: "passed",
+        severity: "green",
+        note: "HTTP 200",
+        spans: [{ text: "https://live.example.com", start: 90, end: 116 }],
+      },
+    ];
+    const { marks } = computeMarks(citations);
+    expect(marks[0].color).toBe("red");
+    expect(marks[0].tooltip).toContain("Dead link");
+    expect(marks[0].tooltip).toContain("HTTP 404");
+    expect(marks[1].color).toBe("ochre");
+    expect(marks[1].tooltip).toContain("Paywall");
+    expect(marks[2].color).toBe("green");
+    expect(marks[2].tooltip).toContain("Link resolves");
+  });
+
   it("is stable in document order", () => {
     const { marks } = computeMarks(findings);
     const starts = marks.map((m) => m.start);

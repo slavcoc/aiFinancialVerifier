@@ -115,4 +115,60 @@ describe("buildPlainReport", () => {
     };
     expect(buildPlainReport(clean)).toContain("No errors found.");
   });
+
+  it("lists dead citations as rows and adds link counts to the header", () => {
+    const r: CheckResponse = {
+      ok: true,
+      summary: {
+        ...baseSummary,
+        failed: 1,
+        checked: 3,
+        discarded: { total: 0 },
+        citationsChecked: 2,
+        citationsDead: 1,
+      },
+      findings: [
+        {
+          id: "c1",
+          type: "citation",
+          label: "citation",
+          status: "failed",
+          severity: "red",
+          claim: "https://dead.example.com/x",
+          note: "HTTP 404 · Wayback snapshot: https://web.archive.org/web/20240101000000/https://dead.example.com/x (2024-01-01)",
+          spans: [span("https://dead.example.com/x", 10)],
+        },
+        {
+          id: "c2",
+          type: "citation",
+          label: "citation",
+          status: "passed",
+          severity: "green",
+          claim: "https://live.example.com",
+          note: "HTTP 200",
+          spans: [span("https://live.example.com", 50)],
+        },
+      ],
+    };
+    const report = buildPlainReport(r);
+    expect(report.split("\n")[0]).toBe(
+      "Second Reader findings — 3 checked · 1 failed · 0 skipped · 2 links · 1 dead"
+    );
+    expect(report).toContain('1) Dead link — citation');
+    expect(report).toContain('"https://dead.example.com/x"');
+    expect(report).toContain("HTTP 404 · Wayback snapshot:");
+    expect(report).not.toContain("Math:");
+    expect(report).not.toContain("c2"); // passed links are not errors
+  });
+
+  it("omits link counts when the engine response predates citations", () => {
+    const r: CheckResponse = {
+      ok: true,
+      summary: { ...baseSummary, failed: 0, discarded: { total: 0 } },
+      findings: [{ id: "p1", status: "passed", spans: [span("$2", 10)] }],
+    };
+    expect(buildPlainReport(r).split("\n")[0]).toBe(
+      "Second Reader findings — 3 checked · 0 failed · 0 skipped"
+    );
+  });
 });

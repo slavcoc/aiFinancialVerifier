@@ -12,6 +12,7 @@ import {
   orderFindings,
 } from "@/lib/claims";
 import { buildPlainReport } from "@/lib/report";
+import { normalizePastedText } from "@/lib/text";
 
 const EXAMPLE = `Total combined expenditure across all three core sectors reached exactly $150,000.
 
@@ -39,7 +40,9 @@ function AnnotatedText({ text, marks }: { text: string; marks: Mark[] }) {
         className={
           m.color === "red"
             ? "cursor-help rounded-[3px] bg-blood-soft px-0.5 text-blood"
-            : "cursor-help rounded-[3px] bg-pine-soft px-0.5 text-moss"
+            : m.color === "ochre"
+              ? "cursor-help rounded-[3px] bg-ochre-soft px-0.5 text-ochre"
+              : "cursor-help rounded-[3px] bg-pine-soft px-0.5 text-moss"
         }
       >
         {text.slice(m.start, m.end)}
@@ -56,12 +59,21 @@ function AnnotatedText({ text, marks }: { text: string; marks: Mark[] }) {
   );
 }
 
-function VerdictBadge({ status }: { status: Finding["status"] }) {
-  const conf = {
-    passed: { icon: "✓", text: "Checks out", cls: "text-moss" },
-    failed: { icon: "✗", text: "Doesn't add up", cls: "text-blood" },
-    discarded: { icon: "⊘", text: "Skipped", cls: "text-mut" },
-  }[status];
+function VerdictBadge({ f }: { f: Finding }) {
+  const conf = f.type === "citation"
+    ? {
+        passed:
+          f.severity === "ochre"
+            ? { icon: "◐", text: "Paywall", cls: "text-ochre" }
+            : { icon: "✓", text: "Link resolves", cls: "text-moss" },
+        failed: { icon: "✗", text: "Dead link", cls: "text-blood" },
+        discarded: { icon: "⊘", text: "Not checked", cls: "text-mut" },
+      }[f.status]
+    : {
+        passed: { icon: "✓", text: "Checks out", cls: "text-moss" },
+        failed: { icon: "✗", text: "Doesn't add up", cls: "text-blood" },
+        discarded: { icon: "⊘", text: "Skipped", cls: "text-mut" },
+      }[f.status];
   return (
     <span
       className={`text-[10px] font-semibold uppercase tracking-[0.15em] ${conf.cls}`}
@@ -82,19 +94,21 @@ function FindingCard({ f, onReveal }: { f: Finding; onReveal?: () => void }) {
       type="button"
       onClick={onReveal}
       disabled={!onReveal}
-      className={`w-full rounded-xl border border-line bg-white p-5 text-left transition-shadow ${
+      className={`w-full rounded-xl border border-line bg-white p-3.5 text-left transition-shadow ${
         onReveal ? "hover:shadow-md focus-visible:outline-2 focus-visible:outline-pine" : "cursor-default"
       } ${
         f.status === "discarded"
           ? "border-l-4 border-l-line"
-          : red
-            ? "border-l-4 border-l-blood"
-            : "border-l-4 border-l-moss"
+          : f.severity === "ochre"
+            ? "border-l-4 border-l-ochre"
+            : red
+              ? "border-l-4 border-l-blood"
+              : "border-l-4 border-l-moss"
       }`}
       aria-label={onReveal ? `Reveal claim in report: ${heading}` : heading}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <VerdictBadge status={f.status} />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <VerdictBadge f={f} />
         {f.type && (
           <span className="rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[11px] text-mut">
             {f.type}
@@ -105,18 +119,18 @@ function FindingCard({ f, onReveal }: { f: Finding; onReveal?: () => void }) {
         )}
       </div>
       <p
-        className="mt-2 line-clamp-3 text-sm font-medium"
+        className={`mt-1.5 line-clamp-2 text-[13px] font-medium leading-snug ${f.type === "citation" ? "break-all" : ""}`}
         title={f.status === "discarded" ? undefined : heading}
       >
         {heading}
       </p>
-      {f.arithmetic && (
-        <p className="mt-2 rounded-lg bg-paper px-3 py-2 font-mono text-[13px] leading-relaxed">
-          {f.arithmetic}
+      {(f.arithmetic ?? f.note) && (
+        <p className="mt-1.5 font-mono text-xs leading-relaxed text-mut">
+          {f.arithmetic ?? f.note}
         </p>
       )}
       {f.status === "discarded" && f.reason && (
-        <p className="mt-1.5 text-xs text-mut">
+        <p className="mt-1 text-xs text-mut">
           {f.label ?? f.type ?? "relation"} — skipped ({f.reason})
         </p>
       )}
@@ -135,22 +149,14 @@ function ClaimsList({
 }) {
   const rows = orderFindings(findings);
   return (
-    <div className="mt-8">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="font-display text-lg">Claims</h2>
-        <span className="text-xs text-mut">
-          {rows.length} {rows.length === 1 ? "claim" : "claims"}
-        </span>
-      </div>
-      <div className="flex flex-col gap-3">
-        {rows.map(({ f, index }) => (
-          <FindingCard
-            key={`${f.id}-${index}`}
-            f={f}
-            onReveal={rendered.has(index) ? () => onReveal(index) : undefined}
-          />
-        ))}
-      </div>
+    <div className="flex flex-col gap-2">
+      {rows.map(({ f, index }) => (
+        <FindingCard
+          key={`${f.id}-${index}`}
+          f={f}
+          onReveal={rendered.has(index) ? () => onReveal(index) : undefined}
+        />
+      ))}
     </div>
   );
 }
@@ -164,6 +170,20 @@ function revealClaim(index: number) {
   void el.offsetWidth;
   el.classList.add("claim-pulse");
   window.setTimeout(() => el.classList.remove("claim-pulse"), 1500);
+}
+
+function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      className={`min-w-32 rounded-full border px-4 py-1.5 text-sm transition-colors ${
+        copied ? "border-moss text-moss" : "border-line hover:border-pine"
+      }`}
+    >
+      {copied ? "Copied ✓" : "Copy findings"}
+    </button>
+  );
 }
 
 // Fallback for browsers/permission states where the async Clipboard API is
@@ -217,6 +237,17 @@ export function Checker({ userName, userEmail }: { userName: string; userEmail: 
       legacyCopy(report);
       markCopied();
     }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = e.clipboardData.getData("text");
+    const normalized = normalizePastedText(pasted);
+    if (normalized === pasted) return; // nothing to fix
+    e.preventDefault();
+    const el = e.currentTarget;
+    const start = el.selectionStart ?? text.length;
+    const end = el.selectionEnd ?? start;
+    setText(text.slice(0, start) + normalized + text.slice(end));
   }
 
   async function runCheck() {
@@ -284,6 +315,7 @@ export function Checker({ userName, userEmail }: { userName: string; userEmail: 
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={handlePaste}
             placeholder={EXAMPLE}
             className="h-64 w-full resize-y rounded-xl border border-line bg-paper p-4 font-mono text-[13px] leading-relaxed outline-none focus:border-pine"
           />
@@ -320,21 +352,6 @@ export function Checker({ userName, userEmail }: { userName: string; userEmail: 
 
         {result && s && (
           <section className="mt-8">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-lg">Findings report</h2>
-              <button
-                type="button"
-                onClick={copyFindings}
-                className={`min-w-32 rounded-full border px-4 py-1.5 text-sm transition-colors ${
-                  copied
-                    ? "border-moss text-moss"
-                    : "border-line hover:border-pine"
-                }`}
-              >
-                {copied ? "Copied ✓" : "Copy findings"}
-              </button>
-            </div>
-
             {marks.length > 0 && (
               <div className="mb-6 rounded-2xl border border-line bg-white p-6 shadow-sm">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -367,14 +384,31 @@ export function Checker({ userName, userEmail }: { userName: string; userEmail: 
                   <b>{discardedTotal}</b> skipped
                 </span>
               )}
+              {s.citationsChecked !== undefined && (
+                <>
+                  <span className="rounded-full border border-line bg-white px-3 py-1 text-xs text-mut">
+                    <b className="text-ink">{s.citationsChecked}</b> links checked
+                  </span>
+                  {(s.citationsDead ?? 0) > 0 && (
+                    <span className="rounded-full border border-line bg-white px-3 py-1 text-xs text-mut">
+                      <b className="text-blood">{s.citationsDead}</b> dead
+                    </span>
+                  )}
+                </>
+              )}
             </div>
 
             {findings.length === 0 ? (
-              <div className="mt-5 rounded-xl border border-dashed border-line bg-white p-6 text-center text-sm text-mut">
-                No checkable relations found in this text.
-                <br />
-                Try a report with stated totals, percentages, or year-over-year figures.
-              </div>
+              <>
+                <div className="mt-5 rounded-xl border border-dashed border-line bg-white p-6 text-center text-sm text-mut">
+                  No checkable relations found in this text.
+                  <br />
+                  Try a report with stated totals, percentages, or year-over-year figures.
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <CopyButton copied={copied} onCopy={copyFindings} />
+                </div>
+              </>
             ) : (
               <>
                 {s.checked > 0 && s.failed === 0 && (
@@ -385,6 +419,12 @@ export function Checker({ userName, userEmail }: { userName: string; userEmail: 
                     </p>
                   </div>
                 )}
+                <div className="mt-8 mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-display text-lg">
+                    Claims <span className="text-xs font-normal text-mut">{findings.length}</span>
+                  </h2>
+                  <CopyButton copied={copied} onCopy={copyFindings} />
+                </div>
                 <ClaimsList findings={findings} rendered={rendered} onReveal={revealClaim} />
               </>
             )}

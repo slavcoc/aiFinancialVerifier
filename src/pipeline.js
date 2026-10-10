@@ -3,6 +3,7 @@ import { locateRelation, claimFromSpans } from "./grounding.js";
 import { verifyRelation } from "./verifier.js";
 import { validityPass } from "./validity.js";
 import { runCrossChecks } from "./crosschecks.js";
+import { runCitations } from "./citations.js";
 
 // Pipeline: extract → ground (verbatim spans + offsets) → validity (explicitly stated?)
 // → parse (deterministic) → verify (deterministic arithmetic) → findings.
@@ -128,6 +129,31 @@ export async function checkText(text, config, deps = {}) {
   }
 
   summary.discarded.total = findings.filter((f) => f.status === "discarded").length;
+
+  // 6. Deterministic citation checks (no LLM): fetch every URL/DOI, classify
+  // resolves / dead / paywall / unreachable. Dead links get an archive.org note.
+  const citations = await runCitations(text, { fetch: deps.fetch ?? globalThis.fetch });
+  let citationsChecked = 0;
+  let citationsDead = 0;
+  for (const f of citations) {
+    if (f.status === "discarded") {
+      summary.discarded[f.reason] = (summary.discarded[f.reason] ?? 0) + 1;
+      summary.discarded.total++;
+    } else {
+      summary.checked++;
+      citationsChecked++;
+      if (f.status === "failed") {
+        summary.failed++;
+        citationsDead++;
+      } else {
+        summary.passed++;
+      }
+    }
+    findings.push(f);
+  }
+  summary.citationsChecked = citationsChecked;
+  summary.citationsDead = citationsDead;
+
   meta.totalMs = Date.now() - start;
   return { summary, findings, meta };
 }
